@@ -33,20 +33,28 @@ cmake .. && cmake --build . --config Release
 
 ### Output Directory Structure
 
-When used as a submodule, deployment outputs are placed in the parent repository's root:
+The deployment system maintains clean separation between build artifacts and final deployment:
+
 ```
-ParentProject/
-├── Release/
+YourProject/
+├── Release/                       # Final deployment artifacts
 │   └── MacOS/
-│       ├── MyApp.app              # Application bundle
-│       └── MyApp-universal-10.15.dmg  # DMG file (if CREATE_DMG enabled)
+│       ├── MyApp.app              # Application bundle (final)
+│       └── MyApp-universal-10.15.dmg  # DMG file (final)
 │   ├── Windows/                   # Windows builds (future)
 │   └── Linux/                     # Linux builds (future)
 ├── build/                         # Development build directory
-└── build_release/                 # Release build directory (avoids conflicts)
+└── build_release/                 # Release build artifacts (CMake cache, object files, etc.)
+    ├── CMakeCache.txt             # Build configuration
+    ├── CMakeFiles/                # Build system files
+    ├── MyApp.app/                 # Built app (copied to Release/MacOS/)
+    └── create_dmg_MyApp.sh        # Generated DMG script
 ```
 
-When used standalone, outputs go to the build_release directory's Release/MacOS folder.
+**Key Benefits:**
+- **Clean separation**: Build artifacts stay in `build_release/`, final products go to `Release/MacOS/`
+- **No conflicts**: Development builds use `build/`, release builds use `build_release/`
+- **Easy distribution**: Final artifacts are clearly organized in `Release/` folder
 
 ### DMG Creation (macOS)
 
@@ -56,8 +64,7 @@ cmake --build . --target MyApp_dmg
 
 # DMG creation is automatically handled by build scripts
 # Requires: brew install create-dmg
-# Output: Release/MacOS/MyApp-universal-10.15.dmg (when used as submodule)
-# Output: build_release/Release/MacOS/MyApp-universal-10.15.dmg (when standalone)
+# Output: Release/MacOS/MyApp-universal-10.15.dmg (always at repo root)
 ```
 
 ### Testing and Development

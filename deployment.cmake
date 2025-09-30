@@ -155,28 +155,34 @@ function(qt_deploy_application TARGET_NAME)
         set(CMAKE_OSX_DEPLOYMENT_TARGET ${DEPLOY_MACOS_DEPLOYMENT_TARGET} PARENT_SCOPE)
         set(CMAKE_OSX_ARCHITECTURES ${DEPLOY_MACOS_ARCHITECTURES} PARENT_SCOPE)
         
-        # Configure output directory structure
+        # Configure final output directory for deployment artifacts
         # When used as submodule, output to parent's Release/MacOS folder
         if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-            set(MACOS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/Release/MacOS")
+            set(MACOS_FINAL_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/Release/MacOS")
         else()
-            # When used standalone, use build directory
-            set(MACOS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/Release/MacOS")
+            # When used standalone, output to repo root Release/MacOS
+            set(MACOS_FINAL_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/Release/MacOS")
         endif()
         
-        # Create output directory
-        file(MAKE_DIRECTORY ${MACOS_OUTPUT_DIR})
+        # Create final output directory
+        file(MAKE_DIRECTORY ${MACOS_FINAL_OUTPUT_DIR})
         
-        # Configure bundle properties and output location
+        # Configure bundle properties (build artifacts stay in build directory)
         set_target_properties(${TARGET_NAME} PROPERTIES
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_GUI_IDENTIFIER ${DEPLOY_MACOS_BUNDLE_ID}
             MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
             XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET ${DEPLOY_MACOS_DEPLOYMENT_TARGET}
-            RUNTIME_OUTPUT_DIRECTORY ${MACOS_OUTPUT_DIR}
-            RUNTIME_OUTPUT_DIRECTORY_RELEASE ${MACOS_OUTPUT_DIR}
-            RUNTIME_OUTPUT_DIRECTORY_DEBUG ${MACOS_OUTPUT_DIR}
+        )
+        
+        # Add custom post-build step to copy final artifacts to Release/MacOS
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${MACOS_FINAL_OUTPUT_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory 
+                "$<TARGET_BUNDLE_DIR:${TARGET_NAME}>" 
+                "${MACOS_FINAL_OUTPUT_DIR}/${TARGET_NAME}.app"
+            COMMENT "Copying ${TARGET_NAME}.app to Release/MacOS/"
         )
         
         # Use custom Info.plist if provided
@@ -210,8 +216,8 @@ function(qt_deploy_application TARGET_NAME)
             if(DEPLOY_DMG_ICON)
                 list(APPEND DMG_OPTIONS ICON ${DEPLOY_DMG_ICON})
             endif()
-            # Pass the output directory to DMG creation
-            list(APPEND DMG_OPTIONS OUTPUT_DIR ${MACOS_OUTPUT_DIR})
+            # Pass the final output directory to DMG creation
+            list(APPEND DMG_OPTIONS OUTPUT_DIR ${MACOS_FINAL_OUTPUT_DIR})
             qt_add_dmg_creation(${TARGET_NAME} ${DMG_OPTIONS})
         endif()
     endif()
@@ -393,13 +399,16 @@ function(qt_add_dmg_creation TARGET_NAME)
         file(CHMOD ${DMG_SCRIPT} 
              PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
         
-        # Add custom target for DMG creation
+        # Add custom target for DMG creation that depends on the app being copied
         add_custom_target(${TARGET_NAME}_dmg
             COMMAND ${DMG_SCRIPT}
             DEPENDS ${TARGET_NAME}
             COMMENT "Creating DMG package for ${TARGET_NAME}"
             VERBATIM
         )
+        
+        # Ensure DMG creation happens after the app is copied to final location
+        add_dependencies(${TARGET_NAME}_dmg ${TARGET_NAME})
         
         message(STATUS "DMG creation target added: ${TARGET_NAME}_dmg")
         message(STATUS "Run 'cmake --build . --target ${TARGET_NAME}_dmg' to create DMG")

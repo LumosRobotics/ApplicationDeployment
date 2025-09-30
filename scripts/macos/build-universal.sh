@@ -31,37 +31,28 @@ echo "Running deployment..."
 cmake --install . --config Release
 
 echo "Deployment completed successfully!"
-echo "Application bundle location: build/Release/QtApplication.app"
+echo "Build artifacts location: build_release/"
+echo "Application bundle copied to: $(pwd)/../Release/MacOS/QtApplication.app"
 
 # Verify architecture support
 echo ""
 echo "Verifying architecture support:"
-lipo -info Release/QtApplication.app/Contents/MacOS/QtApplication
+if [ -f "../Release/MacOS/QtApplication.app/Contents/MacOS/QtApplication" ]; then
+    lipo -info ../Release/MacOS/QtApplication.app/Contents/MacOS/QtApplication
+else
+    echo "Warning: Application bundle not found in Release/MacOS/"
+fi
 
 # Create DMG package if create-dmg is available
 if command -v create-dmg &> /dev/null; then
     echo ""
     echo "Creating DMG package..."
     
-    # Get app name from bundle - try to detect from build output
+    # Get app name from bundle
     APP_NAME="QtApplication"
     
-    # Determine output directory structure
-    # Check if we're building as a submodule (parent CMakeCache.txt exists)
-    if [ -f "../CMakeCache.txt" ]; then
-        # We're building as submodule, output should go to parent's Release/MacOS
-        OUTPUT_DIR="../../Release/MacOS"
-        mkdir -p "$OUTPUT_DIR"
-        
-        # Copy app bundle to final location if not already there
-        if [ -d "Release/${APP_NAME}.app" ] && [ ! -d "$OUTPUT_DIR/${APP_NAME}.app" ]; then
-            echo "Copying application bundle to $OUTPUT_DIR..."
-            cp -R "Release/${APP_NAME}.app" "$OUTPUT_DIR/"
-        fi
-    else
-        # Standalone build, use Release directory in build_release
-        OUTPUT_DIR="Release"
-    fi
+    # Final output directory is always Release/MacOS at repo root
+    OUTPUT_DIR="../Release/MacOS"
     
     if [ -d "$OUTPUT_DIR/${APP_NAME}.app" ]; then
         # Architecture string for DMG filename
@@ -120,6 +111,7 @@ if command -v create-dmg &> /dev/null; then
         fi
     else
         echo "Warning: Application bundle not found at $OUTPUT_DIR/${APP_NAME}.app"
+        echo "Make sure the build completed successfully and the app was copied to Release/MacOS/"
     fi
 else
     echo ""
