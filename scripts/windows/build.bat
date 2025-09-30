@@ -3,8 +3,8 @@ setlocal enabledelayedexpansion
 
 echo Building Qt Application for Windows...
 
-if not exist "build" mkdir build
-cd build
+if not exist "build_release" mkdir build_release
+cd build_release
 
 cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release ..
 if !errorlevel! neq 0 (
@@ -28,4 +28,4 @@ if !errorlevel! neq 0 (
 )
 
 echo Deployment completed successfully!
-echo Binary location: build/Release/QtApplication.exe
+echo Binary location: build_release/Release/QtApplication.exe

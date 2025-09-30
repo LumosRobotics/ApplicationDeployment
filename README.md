@@ -13,7 +13,7 @@ include(deployment/integrate.cmake)
 setup_qt_deployment(YourAppName)
 
 # Build
-mkdir build && cd build
+mkdir build_release && cd build_release
 cmake .. && cmake --build . --config Release
 ```
 

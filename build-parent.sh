@@ -33,8 +33,8 @@ cd "$PARENT_DIR"
 case $PLATFORM in
     "windows")
         echo "Building for Windows..."
-        mkdir -p build
-        cd build
+        mkdir -p build_release
+        cd build_release
         cmake -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . --config Release
         cmake --install . --config Release
@@ -71,8 +71,8 @@ case $PLATFORM in
             ARCHITECTURES="x86_64;arm64"
         fi
         
-        mkdir -p build
-        cd build
+        mkdir -p build_release
+        cd build_release
         cmake -G "Xcode" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=$DEPLOYMENT_TARGET \
@@ -90,8 +90,8 @@ case $PLATFORM in
             ./deployment/scripts/linux/build.sh "$VERSION"
         else
             echo "Building locally for Linux..."
-            mkdir -p build
-            cd build
+            mkdir -p build_release
+            cd build_release
             cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
             ninja
             cmake --install .
@@ -100,8 +100,8 @@ case $PLATFORM in
         ;;
     "")
         echo "No platform specified. Building for current platform..."
-        mkdir -p build
-        cd build
+        mkdir -p build_release
+        cd build_release
         cmake -DCMAKE_BUILD_TYPE=Release ..
         cmake --build . --config Release
         cmake --install . --config Release

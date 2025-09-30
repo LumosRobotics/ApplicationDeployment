@@ -67,35 +67,52 @@ function(qt_create_application TARGET_NAME)
 
     # Link Qt modules
     foreach(module ${APP_QT_MODULES})
-        target_link_libraries(${TARGET_NAME} Qt6::${module})
+        target_link_libraries(${TARGET_NAME} PRIVATE Qt6::${module})
     endforeach()
 
     # Link additional libraries
     if(APP_LIBRARIES)
-        target_link_libraries(${TARGET_NAME} ${APP_LIBRARIES})
+        target_link_libraries(${TARGET_NAME} PRIVATE ${APP_LIBRARIES})
     endif()
 
     # Apply deployment configuration
-    qt_deploy_application(${TARGET_NAME}
-        ${APP_MACOS_DEPLOYMENT_TARGET:+MACOS_DEPLOYMENT_TARGET ${APP_MACOS_DEPLOYMENT_TARGET}}
-        ${APP_MACOS_ARCHITECTURES:+MACOS_ARCHITECTURES ${APP_MACOS_ARCHITECTURES}}
-        ${APP_MACOS_BUNDLE_ID:+MACOS_BUNDLE_ID ${APP_MACOS_BUNDLE_ID}}
-        ${APP_MACOS_INFO_PLIST:+MACOS_INFO_PLIST ${APP_MACOS_INFO_PLIST}}
-        ${APP_WINDOWS_SUBSYSTEM:+WINDOWS_SUBSYSTEM ${APP_WINDOWS_SUBSYSTEM}}
-        ${APP_MACOS_FRAMEWORKS:+MACOS_FRAMEWORKS ${APP_MACOS_FRAMEWORKS}}
-        ${APP_WINDOWS_LIBRARIES:+WINDOWS_LIBRARIES ${APP_WINDOWS_LIBRARIES}}
-    )
+    set(APP_DEPLOY_OPTIONS)
+    if(APP_MACOS_DEPLOYMENT_TARGET)
+        list(APPEND APP_DEPLOY_OPTIONS MACOS_DEPLOYMENT_TARGET ${APP_MACOS_DEPLOYMENT_TARGET})
+    endif()
+    if(APP_MACOS_ARCHITECTURES)
+        list(APPEND APP_DEPLOY_OPTIONS MACOS_ARCHITECTURES ${APP_MACOS_ARCHITECTURES})
+    endif()
+    if(APP_MACOS_BUNDLE_ID)
+        list(APPEND APP_DEPLOY_OPTIONS MACOS_BUNDLE_ID ${APP_MACOS_BUNDLE_ID})
+    endif()
+    if(APP_MACOS_INFO_PLIST)
+        list(APPEND APP_DEPLOY_OPTIONS MACOS_INFO_PLIST ${APP_MACOS_INFO_PLIST})
+    endif()
+    if(APP_WINDOWS_SUBSYSTEM)
+        list(APPEND APP_DEPLOY_OPTIONS WINDOWS_SUBSYSTEM ${APP_WINDOWS_SUBSYSTEM})
+    endif()
+    if(APP_MACOS_FRAMEWORKS)
+        list(APPEND APP_DEPLOY_OPTIONS MACOS_FRAMEWORKS ${APP_MACOS_FRAMEWORKS})
+    endif()
+    if(APP_WINDOWS_LIBRARIES)
+        list(APPEND APP_DEPLOY_OPTIONS WINDOWS_LIBRARIES ${APP_WINDOWS_LIBRARIES})
+    endif()
+    
+    qt_deploy_application(${TARGET_NAME} ${APP_DEPLOY_OPTIONS})
 endfunction()
 
 # Function to configure Qt application deployment (for existing targets)
 function(qt_deploy_application TARGET_NAME)
-    set(options SKIP_MACOS SKIP_WINDOWS SKIP_LINUX)
+    set(options SKIP_MACOS SKIP_WINDOWS SKIP_LINUX CREATE_DMG)
     set(oneValueArgs 
         MACOS_DEPLOYMENT_TARGET 
         MACOS_ARCHITECTURES 
         MACOS_BUNDLE_ID
         MACOS_INFO_PLIST
         WINDOWS_SUBSYSTEM
+        DMG_BACKGROUND
+        DMG_ICON
     )
     set(multiValueArgs MACOS_FRAMEWORKS WINDOWS_LIBRARIES)
     
@@ -138,13 +155,28 @@ function(qt_deploy_application TARGET_NAME)
         set(CMAKE_OSX_DEPLOYMENT_TARGET ${DEPLOY_MACOS_DEPLOYMENT_TARGET} PARENT_SCOPE)
         set(CMAKE_OSX_ARCHITECTURES ${DEPLOY_MACOS_ARCHITECTURES} PARENT_SCOPE)
         
-        # Configure bundle properties
+        # Configure output directory structure
+        # When used as submodule, output to parent's Release/MacOS folder
+        if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+            set(MACOS_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/Release/MacOS")
+        else()
+            # When used standalone, use build directory
+            set(MACOS_OUTPUT_DIR "${CMAKE_BINARY_DIR}/Release/MacOS")
+        endif()
+        
+        # Create output directory
+        file(MAKE_DIRECTORY ${MACOS_OUTPUT_DIR})
+        
+        # Configure bundle properties and output location
         set_target_properties(${TARGET_NAME} PROPERTIES
             MACOSX_BUNDLE TRUE
             MACOSX_BUNDLE_GUI_IDENTIFIER ${DEPLOY_MACOS_BUNDLE_ID}
             MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
             MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
             XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET ${DEPLOY_MACOS_DEPLOYMENT_TARGET}
+            RUNTIME_OUTPUT_DIRECTORY ${MACOS_OUTPUT_DIR}
+            RUNTIME_OUTPUT_DIRECTORY_RELEASE ${MACOS_OUTPUT_DIR}
+            RUNTIME_OUTPUT_DIRECTORY_DEBUG ${MACOS_OUTPUT_DIR}
         )
         
         # Use custom Info.plist if provided
@@ -167,6 +199,20 @@ function(qt_deploy_application TARGET_NAME)
                 XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Developer ID Application: $ENV{APPLE_DEVELOPER_ID}"
                 XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Manual"
             )
+        endif()
+        
+        # Add DMG creation post-build step if requested
+        if(DEPLOY_CREATE_DMG)
+            set(DMG_OPTIONS)
+            if(DEPLOY_DMG_BACKGROUND)
+                list(APPEND DMG_OPTIONS BACKGROUND ${DEPLOY_DMG_BACKGROUND})
+            endif()
+            if(DEPLOY_DMG_ICON)
+                list(APPEND DMG_OPTIONS ICON ${DEPLOY_DMG_ICON})
+            endif()
+            # Pass the output directory to DMG creation
+            list(APPEND DMG_OPTIONS OUTPUT_DIR ${MACOS_OUTPUT_DIR})
+            qt_add_dmg_creation(${TARGET_NAME} ${DMG_OPTIONS})
         endif()
     endif()
 
@@ -230,6 +276,133 @@ function(qt_setup_docker_deployment TARGET_NAME)
     if(UNIX)
         file(CHMOD ${CMAKE_BINARY_DIR}/deploy/build-all.sh
              PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+    endif()
+endfunction()
+
+# Function to add DMG creation post-build step
+function(qt_add_dmg_creation TARGET_NAME)
+    set(options)
+    set(oneValueArgs BACKGROUND ICON VOLNAME OUTPUT_DIR)
+    set(multiValueArgs)
+    
+    cmake_parse_arguments(DMG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    
+    if(NOT DMG_VOLNAME)
+        set(DMG_VOLNAME ${TARGET_NAME})
+    endif()
+    
+    # Set output directory - use provided OUTPUT_DIR or fallback to binary dir
+    if(DMG_OUTPUT_DIR)
+        set(OUTPUT_DIR ${DMG_OUTPUT_DIR})
+    else()
+        set(OUTPUT_DIR ${CMAKE_BINARY_DIR})
+    endif()
+    
+    # Only add on macOS
+    if(APPLE)
+        # Create a script for DMG creation
+        set(DMG_SCRIPT "${CMAKE_BINARY_DIR}/create_dmg_${TARGET_NAME}.sh")
+        
+        file(WRITE ${DMG_SCRIPT} "#!/bin/bash\n")
+        file(APPEND ${DMG_SCRIPT} "set -e\n\n")
+        file(APPEND ${DMG_SCRIPT} "# DMG Creation Script for ${TARGET_NAME}\n")
+        file(APPEND ${DMG_SCRIPT} "echo \"Creating DMG package for ${TARGET_NAME}...\"\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "# Check if create-dmg is available\n")
+        file(APPEND ${DMG_SCRIPT} "if ! command -v create-dmg &> /dev/null; then\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"create-dmg not found. Install with: brew install create-dmg\"\n")
+        file(APPEND ${DMG_SCRIPT} "    exit 1\n")
+        file(APPEND ${DMG_SCRIPT} "fi\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "APP_BUNDLE=\"${TARGET_NAME}.app\"\n")
+        file(APPEND ${DMG_SCRIPT} "OUTPUT_DIR=\"${OUTPUT_DIR}\"\n")
+        file(APPEND ${DMG_SCRIPT} "BUNDLE_PATH=\"$OUTPUT_DIR/$APP_BUNDLE\"\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "if [ ! -d \"$BUNDLE_PATH\" ]; then\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"Error: Application bundle not found at $BUNDLE_PATH\"\n")
+        file(APPEND ${DMG_SCRIPT} "    exit 1\n")
+        file(APPEND ${DMG_SCRIPT} "fi\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "# Determine architecture string\n")
+        file(APPEND ${DMG_SCRIPT} "ARCH_INFO=$(lipo -info \"$BUNDLE_PATH/Contents/MacOS/${TARGET_NAME}\" 2>/dev/null || echo \"unknown\")\n")
+        file(APPEND ${DMG_SCRIPT} "if [[ \"$ARCH_INFO\" == *\"x86_64\"* && \"$ARCH_INFO\" == *\"arm64\"* ]]; then\n")
+        file(APPEND ${DMG_SCRIPT} "    ARCH_STRING=\"universal\"\n")
+        file(APPEND ${DMG_SCRIPT} "elif [[ \"$ARCH_INFO\" == *\"arm64\"* ]]; then\n")
+        file(APPEND ${DMG_SCRIPT} "    ARCH_STRING=\"arm64\"\n")
+        file(APPEND ${DMG_SCRIPT} "elif [[ \"$ARCH_INFO\" == *\"x86_64\"* ]]; then\n")
+        file(APPEND ${DMG_SCRIPT} "    ARCH_STRING=\"x86_64\"\n")
+        file(APPEND ${DMG_SCRIPT} "else\n")
+        file(APPEND ${DMG_SCRIPT} "    ARCH_STRING=\"unknown\"\n")
+        file(APPEND ${DMG_SCRIPT} "fi\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "DEPLOYMENT_TARGET=\"${CMAKE_OSX_DEPLOYMENT_TARGET}\"\n")
+        file(APPEND ${DMG_SCRIPT} "DMG_NAME=\"${TARGET_NAME}-$ARCH_STRING-$DEPLOYMENT_TARGET.dmg\"\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "# Remove existing DMG if it exists\n")
+        file(APPEND ${DMG_SCRIPT} "[ -f \"$OUTPUT_DIR/$DMG_NAME\" ] && rm \"$OUTPUT_DIR/$DMG_NAME\"\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "# Build create-dmg command\n")
+        file(APPEND ${DMG_SCRIPT} "CREATE_DMG_CMD=(\n")
+        file(APPEND ${DMG_SCRIPT} "    create-dmg\n")
+        file(APPEND ${DMG_SCRIPT} "    --volname \"${DMG_VOLNAME}\"\n")
+        file(APPEND ${DMG_SCRIPT} "    --window-pos 200 120\n")
+        file(APPEND ${DMG_SCRIPT} "    --window-size 600 400\n")
+        file(APPEND ${DMG_SCRIPT} "    --icon-size 100\n")
+        file(APPEND ${DMG_SCRIPT} "    --icon \"$APP_BUNDLE\" 175 190\n")
+        file(APPEND ${DMG_SCRIPT} "    --hide-extension \"$APP_BUNDLE\"\n")
+        file(APPEND ${DMG_SCRIPT} "    --app-drop-link 425 190\n")
+        file(APPEND ${DMG_SCRIPT} "    --no-internet-enable\n")
+        
+        # Add optional background image
+        if(DMG_BACKGROUND AND EXISTS ${DMG_BACKGROUND})
+            file(APPEND ${DMG_SCRIPT} "    --background \"${DMG_BACKGROUND}\"\n")
+        endif()
+        
+        # Add optional volume icon
+        if(DMG_ICON AND EXISTS ${DMG_ICON})
+            file(APPEND ${DMG_SCRIPT} "    --volicon \"${DMG_ICON}\"\n")
+        endif()
+        
+        file(APPEND ${DMG_SCRIPT} "    \"$OUTPUT_DIR/$DMG_NAME\"\n")
+        file(APPEND ${DMG_SCRIPT} "    \"$OUTPUT_DIR\"\n")
+        file(APPEND ${DMG_SCRIPT} ")\n\n")
+        
+        # Add volume icon conditionally if not explicitly provided
+        if(NOT DMG_ICON OR NOT EXISTS ${DMG_ICON})
+            file(APPEND ${DMG_SCRIPT} "# Add volume icon if available\n")
+            file(APPEND ${DMG_SCRIPT} "if [ -f \"$BUNDLE_PATH/Contents/Resources/AppIcon.icns\" ]; then\n")
+            file(APPEND ${DMG_SCRIPT} "    CREATE_DMG_CMD+=(--volicon \"$BUNDLE_PATH/Contents/Resources/AppIcon.icns\")\n")
+            file(APPEND ${DMG_SCRIPT} "fi\n\n")
+        endif()
+        
+        file(APPEND ${DMG_SCRIPT} "# Execute create-dmg command\n")
+        file(APPEND ${DMG_SCRIPT} "cd \"$OUTPUT_DIR\"\n")
+        file(APPEND ${DMG_SCRIPT} "\"$\{CREATE_DMG_CMD\[@\]}\"\n\n")
+        
+        file(APPEND ${DMG_SCRIPT} "if [ $? -eq 0 ]; then\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"DMG package created successfully: $DMG_NAME\"\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"DMG size: $(du -h \"$OUTPUT_DIR/$DMG_NAME\" | cut -f1)\"\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"DMG location: $OUTPUT_DIR/$DMG_NAME\"\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"Application bundle location: $OUTPUT_DIR/$APP_BUNDLE\"\n")
+        file(APPEND ${DMG_SCRIPT} "else\n")
+        file(APPEND ${DMG_SCRIPT} "    echo \"Error: DMG creation failed\"\n")
+        file(APPEND ${DMG_SCRIPT} "    exit 1\n")
+        file(APPEND ${DMG_SCRIPT} "fi\n")
+        
+        # Make script executable
+        file(CHMOD ${DMG_SCRIPT} 
+             PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+        
+        # Add custom target for DMG creation
+        add_custom_target(${TARGET_NAME}_dmg
+            COMMAND ${DMG_SCRIPT}
+            DEPENDS ${TARGET_NAME}
+            COMMENT "Creating DMG package for ${TARGET_NAME}"
+            VERBATIM
+        )
+        
+        message(STATUS "DMG creation target added: ${TARGET_NAME}_dmg")
+        message(STATUS "Run 'cmake --build . --target ${TARGET_NAME}_dmg' to create DMG")
     endif()
 endfunction()
 

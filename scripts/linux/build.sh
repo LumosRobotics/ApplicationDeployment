@@ -38,13 +38,13 @@ if ! command -v docker &> /dev/null; then
     echo "Docker is not installed. Building locally..."
     
     # Local build
-    mkdir -p build
-    cd build
+    mkdir -p build_release
+    cd build_release
     cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
     ninja
     
     echo "Build completed successfully!"
-    echo "Binary location: build/QtApplication"
+    echo "Binary location: build_release/QtApplication"
     
     # Create AppImage if linuxdeploy is available
     if command -v linuxdeploy &> /dev/null; then
@@ -68,7 +68,7 @@ else
     
     # Extract binary from container
     mkdir -p dist/$DISTRO-$VERSION
-    docker run --rm -v $(pwd)/dist/$DISTRO-$VERSION:/output qtapp-$DISTRO-$VERSION cp /app/build/QtApplication /output/
+    docker run --rm -v $(pwd)/dist/$DISTRO-$VERSION:/output qtapp-$DISTRO-$VERSION cp /app/build_release/QtApplication /output/
     
     echo "Build completed successfully!"
     echo "Binary location: dist/$DISTRO-$VERSION/QtApplication"

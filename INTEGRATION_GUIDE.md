@@ -61,8 +61,8 @@ setup_qt_deployment(MyApp
 ### 3. Build Your Application
 
 ```bash
-# Local build
-mkdir build && cd build
+# Local build (uses build_release to avoid conflicts with dev builds)
+mkdir build_release && cd build_release
 cmake ..
 cmake --build . --config Release
 
@@ -129,7 +129,8 @@ MyApplication/
 │   ├── scripts/
 │   ├── docker/
 │   └── .github/
-└── build/                   # Build directory
+├── build/                   # Development build directory  
+└── build_release/           # Release build directory (avoids conflicts)
     └── deploy/              # Deployment files copied here
         ├── windows/
         ├── macos/
@@ -265,7 +266,7 @@ If you already have a Qt project, here's how to migrate:
 
 4. **Test the integration**:
    ```bash
-   mkdir build && cd build
+   mkdir build_release && cd build_release
    cmake ..
    cmake --build . --config Release
    ```

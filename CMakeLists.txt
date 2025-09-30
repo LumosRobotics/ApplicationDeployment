@@ -28,81 +28,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         ${HEADERS}
     )
 
-    target_link_libraries(QtApplication Qt6::Core Qt6::Widgets)
+    target_link_libraries(QtApplication 
+        PRIVATE 
+        Qt6::Core 
+        Qt6::Widgets
+    )
     
     # Include deployment configuration
     include(${CMAKE_CURRENT_SOURCE_DIR}/deployment.cmake)
     
-    # Apply deployment to example application
-    qt_deploy_application(QtApplication)
+    # Apply deployment to example application with DMG creation
+    qt_deploy_application(QtApplication 
+        CREATE_DMG
+        MACOS_BUNDLE_ID "com.example.QtApplication"
+    )
 else()
     # When used as submodule, just include the deployment functions
     include(${CMAKE_CURRENT_LIST_DIR}/deployment.cmake)
-endif()
-
-if(WIN32)
-    set_target_properties(QtApplication PROPERTIES
-        WIN32_EXECUTABLE TRUE
-    )
-    
-    qt_generate_deploy_app_script(
-        TARGET QtApplication
-        FILENAME_VARIABLE deploy_script
-        NO_UNSUPPORTED_PLATFORM_ERROR
-    )
-    install(SCRIPT ${deploy_script})
-endif()
-
-if(APPLE)
-    # Set minimum macOS version (can be overridden via -DCMAKE_OSX_DEPLOYMENT_TARGET)
-    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS deployment version")
-    endif()
-    
-    # Support universal binaries (Intel + Apple Silicon)
-    if(NOT CMAKE_OSX_ARCHITECTURES)
-        set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "macOS architectures")
-    endif()
-    
-    set_target_properties(QtApplication PROPERTIES
-        MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_GUI_IDENTIFIER com.example.QtApplication
-        MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-        MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/scripts/macos/Info.plist.in
-    )
-    
-    # Set deployment target for the target
-    set_target_properties(QtApplication PROPERTIES
-        XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET}
-    )
-    
-    qt_generate_deploy_app_script(
-        TARGET QtApplication
-        FILENAME_VARIABLE deploy_script
-        NO_UNSUPPORTED_PLATFORM_ERROR
-    )
-    install(SCRIPT ${deploy_script})
-    
-    # Code signing (optional)
-    if(CMAKE_BUILD_TYPE STREQUAL "Release" AND DEFINED ENV{APPLE_DEVELOPER_ID})
-        set_target_properties(QtApplication PROPERTIES
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Developer ID Application: $ENV{APPLE_DEVELOPER_ID}"
-            XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Manual"
-        )
-    endif()
-endif()
-
-if(UNIX AND NOT APPLE)
-    install(TARGETS QtApplication
-        BUNDLE DESTINATION .
-        RUNTIME DESTINATION bin
-    )
-    
-    qt_generate_deploy_app_script(
-        TARGET QtApplication
-        FILENAME_VARIABLE deploy_script
-        NO_UNSUPPORTED_PLATFORM_ERROR
-    )
-    install(SCRIPT ${deploy_script})
 endif()
